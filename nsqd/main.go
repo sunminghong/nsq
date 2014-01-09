@@ -37,6 +37,8 @@ var (
 	statsdInterval   = flag.Int("statsd-interval", 30, "seconds between pushing to statsd")
 	broadcastAddress = flag.String("broadcast-address", "", "address that will be registered with lookupd, (default to the OS hostname)")
 	lookupdTCPAddrs  = util.StringArray{}
+
+	authenticationPassword = flag.String("authenticationPassword", "", "nsq componts connection authentication password")
 )
 
 func init() {

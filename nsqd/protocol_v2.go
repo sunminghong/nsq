@@ -277,6 +277,7 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 	clientInfo := struct {
 		ShortId string `json:"short_id"`
 		LongId  string `json:"long_id"`
+        AuthenticationPassword string `json:"authentication_password"`
 	}{}
 	err = json.Unmarshal(body, &clientInfo)
 	if err != nil {
@@ -285,6 +286,11 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 
 	client.ShortIdentifier = clientInfo.ShortId
 	client.LongIdentifier = clientInfo.LongId
+    client.AuthenticationPassword = clientInfo.AuthenticationPassword
+
+    if clientInfo.AuthenticationPassword != authenticationPassword {
+		return nil, nsq.NewFatalClientErr(nil, "E_BAD_BODY", "IDENTIFY failed to authentication password has error")
+    }
 
 	return []byte("OK"), nil
 }
