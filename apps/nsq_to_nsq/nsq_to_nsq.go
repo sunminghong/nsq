@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"github.com/bitly/go-hostpool"
 	"github.com/sunminghong/go-nsq"
-	"github.com/bitly/nsq/util"
+	"github.com/sunminghong/nsq/util"
 	"log"
 	"math"
 	"os"
@@ -35,6 +35,7 @@ var (
 
 	statusEvery = flag.Int("status-every", 250, "the # of requests between logging status (per destination), 0 disables")
 	mode        = flag.String("mode", "round-robin", "the upstream request mode options: round-robin (default), hostpool")
+	authenticationPassword = flag.String("authentication-password", "", "nsq componts connection authentication password")
 
 	readerOpts       = util.StringArray{}
 	nsqdTCPAddrs     = util.StringArray{}
@@ -229,7 +230,7 @@ func main() {
 	termChan := make(chan os.Signal, 1)
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
-	r, err := nsq.NewReader(*topic, *channel)
+	r, err := nsq.NewReader(*topic, *channel, *authenticationPassword)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
@@ -253,7 +254,7 @@ func main() {
 
 	writers := make(map[string]*nsq.Writer)
 	for _, addr := range destNsqdTCPAddrs {
-		writer := nsq.NewWriter(addr)
+		writer := nsq.NewWriter(addr, *authenticationPassword)
 		writer.HeartbeatInterval = nsq.DefaultClientTimeout / 2
 		writers[addr] = writer
 	}

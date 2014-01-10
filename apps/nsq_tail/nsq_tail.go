@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/sunminghong/go-nsq"
-	"github.com/bitly/nsq/util"
+	"github.com/sunminghong/nsq/util"
 	"log"
 	"math/rand"
 	"os"
@@ -20,6 +20,7 @@ var (
 	channel       = flag.String("channel", "", "nsq channel")
 	maxInFlight   = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 	totalMessages = flag.Int("n", 0, "total messages to show (will wait if starved)")
+	authenticationPassword = flag.String("authentication-password", "", "nsq componts connection authentication password")
 
 	readerOpts       = util.StringArray{}
 	nsqdTCPAddrs     = util.StringArray{}
@@ -80,7 +81,7 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
-	r, err := nsq.NewReader(*topic, *channel)
+	r, err := nsq.NewReader(*topic, *channel, *authenticationPassword)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}

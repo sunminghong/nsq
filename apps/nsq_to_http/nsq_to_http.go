@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"github.com/bitly/go-hostpool"
 	"github.com/sunminghong/go-nsq"
-	"github.com/bitly/nsq/util"
+	"github.com/sunminghong/nsq/util"
 	"log"
 	"math"
 	"math/rand"
@@ -55,6 +55,8 @@ var (
 	verbose            = flag.Bool("verbose", false, "(depgrecated) use --reader-opt=verbose")
 	throttleFraction   = flag.Float64("throttle-fraction", 1.0, "(deprecated) use --sample=X, publish only a fraction of messages")
 	httpTimeoutMs      = flag.Int("http-timeout-ms", 20000, "(deprecated) use --http-timeout=X, timeout for HTTP connect/read/write (each)")
+
+	authenticationPassword = flag.String("authentication-password", "", "nsq componts connection authentication password")
 )
 
 func init() {
@@ -289,7 +291,7 @@ func main() {
 		addresses = getAddrs
 	}
 
-	r, err := nsq.NewReader(*topic, *channel)
+	r, err := nsq.NewReader(*topic, *channel, *authenticationPassword)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}

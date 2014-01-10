@@ -22,6 +22,9 @@ var (
 	showVersion      = flag.Bool("version", false, "print version string")
 	httpAddress      = flag.String("http-address", "0.0.0.0:8080", "<addr>:<port> to listen on for HTTP clients")
 	maxInFlight      = flag.Int("max-in-flight", 100, "max number of messages to allow in flight")
+
+	authenticationPassword = flag.String("authentication-password", "", "nsq componts connection authentication password")
+
 	nsqdTCPAddrs     = util.StringArray{}
 	lookupdHTTPAddrs = util.StringArray{}
 )
@@ -143,7 +146,7 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	r, err := nsq.NewReader(topicName, channelName)
+	r, err := nsq.NewReader(topicName, channelName, *authenticationPassword)
 	r.SetMaxInFlight(*maxInFlight)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

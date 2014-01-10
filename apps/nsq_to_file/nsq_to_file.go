@@ -8,7 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/sunminghong/go-nsq"
-	"github.com/bitly/nsq/util"
+	"github.com/sunminghong/nsq/util"
 	"log"
 	"os"
 	"os/signal"
@@ -32,6 +32,7 @@ var (
 	gzipLevel      = flag.Int("gzip-level", 6, "gzip compression level (1-9, 1=BestSpeed, 9=BestCompression)")
 	gzipEnabled    = flag.Bool("gzip", false, "gzip output files.")
 	skipEmptyFiles = flag.Bool("skip-empty-files", false, "Skip writting empty files")
+	authenticationPassword = flag.String("authentication-password", "", "nsq componts connection authentication password")
 
 	readerOpts       = util.StringArray{}
 	nsqdTCPAddrs     = util.StringArray{}
@@ -338,7 +339,7 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
-	r, err := nsq.NewReader(*topic, *channel)
+	r, err := nsq.NewReader(*topic, *channel, *authenticationPassword)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}

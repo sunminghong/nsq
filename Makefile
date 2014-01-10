@@ -1,8 +1,8 @@
-PREFIX=/usr/local
+PREFIX=.
 DESTDIR=
 GOFLAGS=
 BINDIR=${PREFIX}/bin
-DATADIR=${PREFIX}/share
+DATADIR=${PREFIX}/bin
 
 NSQD_SRCS = $(wildcard nsqd/*.go nsq/*.go util/*.go util/pqueue/*.go)
 NSQLOOKUPD_SRCS = $(wildcard nsqlookupd/*.go nsq/*.go util/*.go)
@@ -60,5 +60,5 @@ install: $(BINARIES) $(EXAMPLES)
 	install -m 755 $(BLDDIR)/apps/nsq_tail ${DESTDIR}${BINDIR}/nsq_tail
 	install -m 755 $(BLDDIR)/apps/nsq_stat ${DESTDIR}${BINDIR}/nsq_stat
 	install -m 755 -d ${DESTDIR}${DATADIR}
-	install -d ${DESTDIR}${DATADIR}/nsqadmin
-	cp -r nsqadmin/templates ${DESTDIR}${DATADIR}/nsqadmin
+	#install -d ${DESTDIR}${DATADIR}/nsqadmin
+	cp -r nsqadmin/templates ${DESTDIR}${DATADIR}
