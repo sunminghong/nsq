@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 	"github.com/sunminghong/go-nsq"
-	"github.com/bitly/nsq/util"
-	lookuputil "github.com/bitly/nsq/util/lookupd"
+	"github.com/sunminghong/nsq/util"
+	lookuputil "github.com/sunminghong/nsq/util/lookupd"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"

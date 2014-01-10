@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/sunminghong/go-nsq"
-	"github.com/bitly/nsq/util"
+	"github.com/sunminghong/nsq/util"
 	"log"
 	"net"
 	"os"

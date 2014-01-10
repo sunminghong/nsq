@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/sunminghong/go-nsq"
-	"github.com/bitly/nsq/util"
+	"github.com/sunminghong/nsq/util"
 	"io"
 	"log"
 	"net"

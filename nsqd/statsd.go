@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/bitly/nsq/util"
+	"github.com/sunminghong/nsq/util"
 	"log"
 	"math"
 	"runtime"

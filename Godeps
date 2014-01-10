@@ -1,5 +1,5 @@
 {
-	"ImportPath": "github.com/bitly/nsq",
+	"ImportPath": "github.com/sunminghong/nsq",
 	"GoVersion": "go1.1.2",
 	"Packages": [
 		"./..."
@@ -14,7 +14,7 @@
 			"Rev": "58b95b10d6ca26723a7f46017b348653b825a8d6"
 		},
 		{
-			"ImportPath": "github.com/bitly/go-nsq",
+			"ImportPath": "github.com/sunminghong/go-nsq",
 			"Comment": "v0.3.4",
 			"Rev": "66a09524da8312e7a7b0402c28e2730f4a97042d"
 		},

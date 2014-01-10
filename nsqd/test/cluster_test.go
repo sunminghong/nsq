@@ -2,7 +2,7 @@ package nsq
 
 import (
 	"fmt"
-	"github.com/bitly/nsq/util"
+	"github.com/sunminghong/nsq/util"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/bitly/go-simplejson"
-	"github.com/bitly/nsq/util"
+	"github.com/sunminghong/nsq/util"
 	"html/template"
 	"log"
 	"net"

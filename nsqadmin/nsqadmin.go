@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/bitly/nsq/util"
+	"github.com/sunminghong/nsq/util"
 	"log"
 	"net"
 	"os"

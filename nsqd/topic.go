@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"github.com/sunminghong/go-nsq"
-	"github.com/bitly/nsq/util"
+	"github.com/sunminghong/nsq/util"
 	"log"
 	"sync"
 	"sync/atomic"

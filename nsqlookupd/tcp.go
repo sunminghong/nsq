@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/bitly/nsq/util"
+	"github.com/sunminghong/nsq/util"
 	"io"
 	"log"
 	"net"

@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 	"github.com/sunminghong/go-nsq"
-	"github.com/bitly/nsq/util"
-	"github.com/bitly/nsq/util/lookupd"
+	"github.com/sunminghong/nsq/util"
+	"github.com/sunminghong/nsq/util/lookupd"
 	"html/template"
 	"io"
 	"io/ioutil"

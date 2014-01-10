@@ -2,8 +2,8 @@ package lookupd
 
 import (
 	"fmt"
-	"github.com/bitly/nsq/util"
-	"github.com/bitly/nsq/util/semver"
+	"github.com/sunminghong/nsq/util"
+	"github.com/sunminghong/nsq/util/semver"
 	"sort"
 	"time"
 )

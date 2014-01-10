@@ -14,7 +14,7 @@ NOTE: we are now publishing additional binaries built against go1.2
 The most prominent addition is the tracking of end-to-end message processing percentiles. This
 measures the amount of time it's taking from `PUB` to `FIN` per topic/channel. The percentiles are
 configurable and, because there is *some* overhead in collecting this data, it can be turned off
-entirely. Please see [the section in the docs](http://bitly.github.io/nsq/components/nsqd.html) for
+entirely. Please see [the section in the docs](http://sunminghong.github.io/nsq/components/nsqd.html) for
 implementation details.
 
 Additionally, the utility apps received comprehensive support for all configurable reader options
@@ -51,7 +51,7 @@ New Features / Enhancements:
 **Upgrading from 0.2.22**: No backwards incompatible changes.
 
 We now use [godep](https://github.com/kr/godep) in order to achieve reproducible builds with pinned
-dependencies.  If you're on go1.1+ you can now just use `godep get github.com/bitly/nsq/...`.
+dependencies.  If you're on go1.1+ you can now just use `godep get github.com/sunminghong/nsq/...`.
 
 This release includes `nsqd` protocol compression feature negotiation.
 [Snappy](https://code.google.com/p/snappy/) and [Deflate](http://en.wikipedia.org/wiki/DEFLATE) are
@@ -358,8 +358,8 @@ removed in a future release.
 
 ## go-nsq Client Library
 
- * #264 moved **go-nsq** to its own [repository](https://github.com/bitly/go-nsq)
+ * #264 moved **go-nsq** to its own [repository](https://github.com/sunminghong/go-nsq)
 
 ## pynsq Python Client Library
 
- * #88 moved **pynsq** to its own [repository](https://github.com/bitly/pynsq)
+ * #88 moved **pynsq** to its own [repository](https://github.com/sunminghong/pynsq)

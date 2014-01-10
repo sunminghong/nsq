@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"github.com/bitly/nsq/util"
+	"github.com/sunminghong/nsq/util"
 	"log"
 	"net/http"
 	"strings"

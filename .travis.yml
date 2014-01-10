@@ -9,7 +9,7 @@ env:
 install:
   - go get github.com/kr/godep || true
   # these need to be installed manually for go1.0.x
-  - go get github.com/bitly/go-nsq
+  - go get github.com/sunminghong/go-nsq
   - go get github.com/bitly/go-simplejson
   - go get github.com/bitly/go-hostpool
   - go get github.com/mreiferson/go-snappystream

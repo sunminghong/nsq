@@ -4,7 +4,7 @@ import (
 	"crypto/md5"
 	"flag"
 	"fmt"
-	"github.com/bitly/nsq/util"
+	"github.com/sunminghong/nsq/util"
 	"hash/crc32"
 	"io"
 	"log"
