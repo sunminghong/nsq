@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/bitly/nsq/util"
 	"sort"
 )
 
@@ -10,6 +11,8 @@ type TopicStats struct {
 	Depth        int64          `json:"depth"`
 	BackendDepth int64          `json:"backend_depth"`
 	MessageCount uint64         `json:"message_count"`
+
+	E2eProcessingLatency *util.PercentileResult `json:"e2e_processing_latency"`
 }
 
 func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
@@ -19,6 +22,8 @@ func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 		Depth:        t.Depth(),
 		BackendDepth: t.backend.Depth(),
 		MessageCount: t.messageCount,
+
+		E2eProcessingLatency: t.AggregateChannelE2eProcessingLatency().PercentileResult(),
 	}
 }
 
@@ -33,6 +38,8 @@ type ChannelStats struct {
 	TimeoutCount  uint64        `json:"timeout_count"`
 	Clients       []ClientStats `json:"clients"`
 	Paused        bool          `json:"paused"`
+
+	E2eProcessingLatency *util.PercentileResult `json:"e2e_processing_latency"`
 }
 
 func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
@@ -47,6 +54,8 @@ func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
 		TimeoutCount:  c.timeoutCount,
 		Clients:       clients,
 		Paused:        c.IsPaused(),
+
+		E2eProcessingLatency: c.e2eProcessingLatencyStream.PercentileResult(),
 	}
 }
 
@@ -61,6 +70,7 @@ type ClientStats struct {
 	FinishCount   uint64 `json:"finish_count"`
 	RequeueCount  uint64 `json:"requeue_count"`
 	ConnectTime   int64  `json:"connect_ts"`
+	SampleRate    int32  `json:"sample_rate"`
 }
 
 type Topics []*Topic
@@ -89,38 +99,34 @@ func (n *NSQd) getStats() []TopicStats {
 	n.RLock()
 	defer n.RUnlock()
 
-	realTopics := make([]*Topic, len(nsqd.topicMap))
-	topics := make([]TopicStats, len(nsqd.topicMap))
-	topic_index := 0
-	for _, t := range nsqd.topicMap {
-		realTopics[topic_index] = t
-		topic_index++
+	realTopics := make([]*Topic, 0, len(n.topicMap))
+	for _, t := range n.topicMap {
+		realTopics = append(realTopics, t)
 	}
-
 	sort.Sort(TopicsByName{realTopics})
-	for topic_index, t := range realTopics {
+
+	topics := make([]TopicStats, 0, len(n.topicMap))
+	for _, t := range realTopics {
 		t.RLock()
 
-		realChannels := make([]*Channel, len(t.channelMap))
-		channel_index := 0
+		realChannels := make([]*Channel, 0, len(t.channelMap))
 		for _, c := range t.channelMap {
-			realChannels[channel_index] = c
-			channel_index++
+			realChannels = append(realChannels, c)
 		}
 		sort.Sort(ChannelsByName{realChannels})
 
-		channels := make([]ChannelStats, len(t.channelMap))
-		for channel_index, c := range realChannels {
+		channels := make([]ChannelStats, 0, len(t.channelMap))
+		for _, c := range realChannels {
 			c.RLock()
-			clients := make([]ClientStats, len(c.clients))
-			for client_index, client := range c.clients {
-				clients[client_index] = client.Stats()
+			clients := make([]ClientStats, 0, len(c.clients))
+			for _, client := range c.clients {
+				clients = append(clients, client.Stats())
 			}
-			channels[channel_index] = NewChannelStats(c, clients)
+			channels = append(channels, NewChannelStats(c, clients))
 			c.RUnlock()
 		}
 
-		topics[topic_index] = NewTopicStats(t, channels)
+		topics = append(topics, NewTopicStats(t, channels))
 
 		t.RUnlock()
 	}

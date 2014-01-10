@@ -1,8 +1,10 @@
 package main
 
 import (
-	"../nsq"
 	"fmt"
+	"github.com/sunminghong/go-nsq"
+	"github.com/bitly/nsq/util"
+	lookuputil "github.com/bitly/nsq/util/lookupd"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
@@ -12,16 +14,16 @@ import (
 	"time"
 )
 
-func mustStartLookupd() (*net.TCPAddr, *net.TCPAddr) {
+func mustStartLookupd() (*net.TCPAddr, *net.TCPAddr, *NSQLookupd) {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
 	httpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
 
-	lookupd = NewNSQLookupd()
-	lookupd.tcpAddr = tcpAddr
-	lookupd.httpAddr = httpAddr
-	lookupd.Main()
+	nsqlookupd := NewNSQLookupd()
+	nsqlookupd.tcpAddr = tcpAddr
+	nsqlookupd.httpAddr = httpAddr
+	nsqlookupd.Main()
 
-	return lookupd.tcpListener.Addr().(*net.TCPAddr), lookupd.httpListener.Addr().(*net.TCPAddr)
+	return nsqlookupd.tcpListener.Addr().(*net.TCPAddr), nsqlookupd.httpListener.Addr().(*net.TCPAddr), nsqlookupd
 }
 
 func mustConnectLookupd(t *testing.T, tcpAddr *net.TCPAddr) net.Conn {
@@ -52,10 +54,10 @@ func TestBasicLookupd(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpAddr, httpAddr := mustStartLookupd()
-	defer lookupd.Exit()
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd()
+	defer nsqlookupd.Exit()
 
-	topics := lookupd.DB.FindRegistrations("topic", "*", "*")
+	topics := nsqlookupd.DB.FindRegistrations("topic", "*", "*")
 	assert.Equal(t, len(topics), 0)
 
 	topicName := "connectmsg"
@@ -71,27 +73,27 @@ func TestBasicLookupd(t *testing.T) {
 	assert.Equal(t, v, []byte("OK"))
 
 	endpoint := fmt.Sprintf("http://%s/nodes", httpAddr)
-	data, err := nsq.ApiRequest(endpoint)
+	data, err := util.ApiRequest(endpoint)
 	log.Printf("got %v", data)
 	returnedProducers, err := data.Get("producers").Array()
 	assert.Equal(t, err, nil)
 	assert.Equal(t, len(returnedProducers), 1)
 
-	topics = lookupd.DB.FindRegistrations("topic", topicName, "")
+	topics = nsqlookupd.DB.FindRegistrations("topic", topicName, "")
 	assert.Equal(t, len(topics), 1)
 
-	producers := lookupd.DB.FindProducers("topic", topicName, "")
+	producers := nsqlookupd.DB.FindProducers("topic", topicName, "")
 	assert.Equal(t, len(producers), 1)
 	producer := producers[0]
 
-	assert.Equal(t, producer.Address, "ip.address") //TODO: remove for 1.0
-	assert.Equal(t, producer.BroadcastAddress, "ip.address")
-	assert.Equal(t, producer.Hostname, "ip.address")
-	assert.Equal(t, producer.TcpPort, tcpPort)
-	assert.Equal(t, producer.HttpPort, httpPort)
+	assert.Equal(t, producer.peerInfo.Address, "ip.address") //TODO: remove for 1.0
+	assert.Equal(t, producer.peerInfo.BroadcastAddress, "ip.address")
+	assert.Equal(t, producer.peerInfo.Hostname, "ip.address")
+	assert.Equal(t, producer.peerInfo.TcpPort, tcpPort)
+	assert.Equal(t, producer.peerInfo.HttpPort, httpPort)
 
 	endpoint = fmt.Sprintf("http://%s/topics", httpAddr)
-	data, err = nsq.ApiRequest(endpoint)
+	data, err = util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	returnedTopics, err := data.Get("topics").Array()
 	log.Printf("got returnedTopics %v", returnedTopics)
@@ -99,16 +101,17 @@ func TestBasicLookupd(t *testing.T) {
 	assert.Equal(t, len(returnedTopics), 1)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err = nsq.ApiRequest(endpoint)
+	data, err = util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	returnedChannels, err := data.Get("channels").Array()
 	assert.Equal(t, err, nil)
 	assert.Equal(t, len(returnedChannels), 1)
 
 	returnedProducers, err = data.Get("producers").Array()
+	log.Printf("got returnedProducers %v", returnedProducers)
 	assert.Equal(t, err, nil)
 	assert.Equal(t, len(returnedProducers), 1)
-	for i, _ := range returnedProducers {
+	for i := range returnedProducers {
 		producer := data.Get("producers").GetIndex(i)
 		log.Printf("producer %v", producer)
 		assert.Equal(t, err, nil)
@@ -133,7 +136,7 @@ func TestBasicLookupd(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// now there should be no producers, but still topic/channel entries
-	data, err = nsq.ApiRequest(endpoint)
+	data, err = util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	returnedChannels, err = data.Get("channels").Array()
 	assert.Equal(t, err, nil)
@@ -147,10 +150,10 @@ func TestChannelUnregister(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpAddr, httpAddr := mustStartLookupd()
-	defer lookupd.Exit()
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd()
+	defer nsqlookupd.Exit()
 
-	topics := lookupd.DB.FindRegistrations("topic", "*", "*")
+	topics := nsqlookupd.DB.FindRegistrations("topic", "*", "*")
 	assert.Equal(t, len(topics), 0)
 
 	topicName := "channel_unregister"
@@ -165,10 +168,10 @@ func TestChannelUnregister(t *testing.T) {
 	assert.Equal(t, err, nil)
 	assert.Equal(t, v, []byte("OK"))
 
-	topics = lookupd.DB.FindRegistrations("topic", topicName, "")
+	topics = nsqlookupd.DB.FindRegistrations("topic", topicName, "")
 	assert.Equal(t, len(topics), 1)
 
-	channels := lookupd.DB.FindRegistrations("channel", topicName, "*")
+	channels := nsqlookupd.DB.FindRegistrations("channel", topicName, "*")
 	assert.Equal(t, len(channels), 1)
 
 	nsq.UnRegister(topicName, "ch1").Write(conn)
@@ -176,16 +179,16 @@ func TestChannelUnregister(t *testing.T) {
 	assert.Equal(t, err, nil)
 	assert.Equal(t, v, []byte("OK"))
 
-	topics = lookupd.DB.FindRegistrations("topic", topicName, "")
+	topics = nsqlookupd.DB.FindRegistrations("topic", topicName, "")
 	assert.Equal(t, len(topics), 1)
 
 	// we should still have mention of the topic even though there is no producer
 	// (ie. we haven't *deleted* the channel, just unregistered as a producer)
-	channels = lookupd.DB.FindRegistrations("channel", topicName, "*")
+	channels = nsqlookupd.DB.FindRegistrations("channel", topicName, "*")
 	assert.Equal(t, len(channels), 1)
 
 	endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err := nsq.ApiRequest(endpoint)
+	data, err := util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	returnedProducers, err := data.Get("producers").Array()
 	assert.Equal(t, err, nil)
@@ -196,11 +199,12 @@ func TestTombstoneRecover(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpAddr, httpAddr := mustStartLookupd()
-	defer lookupd.Exit()
-	lookupd.tombstoneLifetime = 50 * time.Millisecond
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd()
+	defer nsqlookupd.Exit()
+	nsqlookupd.tombstoneLifetime = 50 * time.Millisecond
 
 	topicName := "tombstone_recover"
+	topicName2 := topicName + "2"
 
 	conn := mustConnectLookupd(t, tcpAddr)
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
@@ -209,20 +213,30 @@ func TestTombstoneRecover(t *testing.T) {
 	_, err := nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
 
+	nsq.Register(topicName2, "channel2").Write(conn)
+	_, err = nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
+
 	endpoint := fmt.Sprintf("http://%s/tombstone_topic_producer?topic=%s&node=%s", httpAddr, topicName, "ip.address:5555")
-	_, err = nsq.ApiRequest(endpoint)
+	_, err = util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err := nsq.ApiRequest(endpoint)
+	data, err := util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	producers, _ := data.Get("producers").Array()
 	assert.Equal(t, len(producers), 0)
 
+	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName2)
+	data, err = util.ApiRequest(endpoint)
+	assert.Equal(t, err, nil)
+	producers, _ = data.Get("producers").Array()
+	assert.Equal(t, len(producers), 1)
+
 	time.Sleep(55 * time.Millisecond)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err = nsq.ApiRequest(endpoint)
+	data, err = util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	producers, _ = data.Get("producers").Array()
 	assert.Equal(t, len(producers), 1)
@@ -232,9 +246,9 @@ func TestTombstoneUnregister(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpAddr, httpAddr := mustStartLookupd()
-	defer lookupd.Exit()
-	lookupd.tombstoneLifetime = 50 * time.Millisecond
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd()
+	defer nsqlookupd.Exit()
+	nsqlookupd.tombstoneLifetime = 50 * time.Millisecond
 
 	topicName := "tombstone_unregister"
 
@@ -246,11 +260,11 @@ func TestTombstoneUnregister(t *testing.T) {
 	assert.Equal(t, err, nil)
 
 	endpoint := fmt.Sprintf("http://%s/tombstone_topic_producer?topic=%s&node=%s", httpAddr, topicName, "ip.address:5555")
-	_, err = nsq.ApiRequest(endpoint)
+	_, err = util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err := nsq.ApiRequest(endpoint)
+	data, err := util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	producers, _ := data.Get("producers").Array()
 	assert.Equal(t, len(producers), 0)
@@ -262,8 +276,75 @@ func TestTombstoneUnregister(t *testing.T) {
 	time.Sleep(55 * time.Millisecond)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err = nsq.ApiRequest(endpoint)
+	data, err = util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	producers, _ = data.Get("producers").Array()
 	assert.Equal(t, len(producers), 0)
+}
+
+func TestInactiveNodes(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd()
+	defer nsqlookupd.Exit()
+	nsqlookupd.inactiveProducerTimeout = 50 * time.Millisecond
+
+	lookupdHTTPAddrs := []string{fmt.Sprintf("%s", httpAddr)}
+
+	topicName := "inactive_nodes"
+
+	conn := mustConnectLookupd(t, tcpAddr)
+	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
+
+	nsq.Register(topicName, "channel1").Write(conn)
+	_, err := nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
+
+	producers, _ := lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
+	assert.Equal(t, len(producers), 1)
+	assert.Equal(t, len(producers[0].Topics), 1)
+	assert.Equal(t, producers[0].Topics[0].Topic, topicName)
+	assert.Equal(t, producers[0].Topics[0].Tombstoned, false)
+
+	time.Sleep(55 * time.Millisecond)
+
+	producers, _ = lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
+	assert.Equal(t, len(producers), 0)
+}
+
+func TestTombstonedNodes(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd()
+	defer nsqlookupd.Exit()
+	nsqlookupd.inactiveProducerTimeout = 50 * time.Millisecond
+
+	lookupdHTTPAddrs := []string{fmt.Sprintf("%s", httpAddr)}
+
+	topicName := "inactive_nodes"
+
+	conn := mustConnectLookupd(t, tcpAddr)
+	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
+
+	nsq.Register(topicName, "channel1").Write(conn)
+	_, err := nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
+
+	producers, _ := lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
+	assert.Equal(t, len(producers), 1)
+	assert.Equal(t, len(producers[0].Topics), 1)
+	assert.Equal(t, producers[0].Topics[0].Topic, topicName)
+	assert.Equal(t, producers[0].Topics[0].Tombstoned, false)
+
+	endpoint := fmt.Sprintf("http://%s/tombstone_topic_producer?topic=%s&node=%s", httpAddr, topicName, "ip.address:5555")
+	_, err = util.ApiRequest(endpoint)
+	assert.Equal(t, err, nil)
+
+	producers, _ = lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
+	assert.Equal(t, len(producers), 1)
+	assert.Equal(t, len(producers[0].Topics), 1)
+	assert.Equal(t, producers[0].Topics[0].Topic, topicName)
+	assert.Equal(t, producers[0].Topics[0].Tombstoned, true)
 }

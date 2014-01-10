@@ -1,30 +1,23 @@
 #!/bin/bash
 set -e
-# a helper script to run tests in the appropriate directories
 
-for dir in nsqd nsqlookupd util/pqueue; do
-    echo "testing $dir"
-    pushd $dir >/dev/null
-    go test -test.v -timeout 15s
-    popd >/dev/null
-done
+if go version | grep -q -v "go1.0"; then
+    # godep doesn't build for go1 so dont use it
+    export GOPATH=$(godep path):$GOPATH
+fi
 
 # build and run nsqlookupd
-pushd nsqlookupd >/dev/null
-go build
-echo "starting nsqlookupd"
-./nsqlookupd >/dev/null 2>&1 &
+echo "building and starting nsqlookupd"
+go build -o nsqlookupd/nsqlookupd ./nsqlookupd
+nsqlookupd/nsqlookupd >/dev/null 2>&1 &
 LOOKUPD_PID=$!
-popd >/dev/null
 
 # build and run nsqd configured to use our lookupd above
-pushd nsqd >/dev/null
-go build
-rm -f *.dat
-echo "starting nsqd --data-path=/tmp --lookupd-tcp-address=127.0.0.1:4160"
-./nsqd --data-path=/tmp --lookupd-tcp-address=127.0.0.1:4160 >/dev/null 2>&1 &
+cmd="nsqd/nsqd --data-path=/tmp --lookupd-tcp-address=127.0.0.1:4160 --tls-cert=nsqd/test/cert.pem --tls-key=nsqd/test/key.pem"
+echo "building and starting $cmd"
+go build -o nsqd/nsqd ./nsqd
+$cmd >/dev/null 2>&1 &
 NSQD_PID=$!
-popd >/dev/null
 
 sleep 0.3
 
@@ -34,15 +27,10 @@ cleanup() {
 }
 trap cleanup INT TERM EXIT
 
-pushd nsq >/dev/null
-echo "testing nsq"
-go test -v -timeout 15s
-popd >/dev/null
+go test -v -timeout 60s ./...
 
 # no tests, but a build is something
-for dir in nsqadmin nsqlookupd examples/*; do
-    pushd $dir >/dev/null
+for dir in nsqadmin apps/* bench/*; do
     echo "building $dir"
-    go build
-    popd >/dev/null
+    go build -o $dir/$(basename $dir) ./$dir
 done

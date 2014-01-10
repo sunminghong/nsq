@@ -1,50 +1,60 @@
 package main
 
 import (
-	"../nsq"
-	"../util"
 	"bytes"
 	"errors"
+	"github.com/sunminghong/go-nsq"
+	"github.com/bitly/nsq/util"
 	"log"
 	"sync"
 	"sync/atomic"
 )
 
 type Topic struct {
+	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
+	messageCount uint64
+
 	sync.RWMutex
-	name               string
-	channelMap         map[string]*Channel
-	backend            BackendQueue
-	incomingMsgChan    chan *nsq.Message
-	memoryMsgChan      chan *nsq.Message
-	messagePumpStarter *sync.Once
-	exitChan           chan int
-	waitGroup          util.WaitGroupWrapper
-	exitFlag           int32
-	messageCount       uint64
-	notifier           Notifier
-	options            *nsqdOptions
+
+	name              string
+	channelMap        map[string]*Channel
+	backend           BackendQueue
+	incomingMsgChan   chan *nsq.Message
+	memoryMsgChan     chan *nsq.Message
+	exitChan          chan int
+	channelUpdateChan chan int
+	waitGroup         util.WaitGroupWrapper
+	exitFlag          int32
+
+	options *nsqdOptions
+	context *Context
 }
 
 // Topic constructor
-func NewTopic(topicName string, options *nsqdOptions, notifier Notifier) *Topic {
-	topic := &Topic{
-		name:               topicName,
-		channelMap:         make(map[string]*Channel),
-		backend:            NewDiskQueue(topicName, options.dataPath, options.maxBytesPerFile, options.syncEvery),
-		incomingMsgChan:    make(chan *nsq.Message, 1),
-		memoryMsgChan:      make(chan *nsq.Message, options.memQueueSize),
-		notifier:           notifier,
-		options:            options,
-		exitChan:           make(chan int),
-		messagePumpStarter: new(sync.Once),
+func NewTopic(topicName string, context *Context) *Topic {
+	diskQueue := NewDiskQueue(topicName,
+		context.nsqd.options.dataPath,
+		context.nsqd.options.maxBytesPerFile,
+		context.nsqd.options.syncEvery,
+		context.nsqd.options.syncTimeout)
+
+	t := &Topic{
+		name:              topicName,
+		channelMap:        make(map[string]*Channel),
+		backend:           diskQueue,
+		incomingMsgChan:   make(chan *nsq.Message, 1),
+		memoryMsgChan:     make(chan *nsq.Message, context.nsqd.options.memQueueSize),
+		exitChan:          make(chan int),
+		channelUpdateChan: make(chan int),
+		context:           context,
 	}
 
-	topic.waitGroup.Wrap(func() { topic.router() })
+	t.waitGroup.Wrap(func() { t.router() })
+	t.waitGroup.Wrap(func() { t.messagePump() })
 
-	go notifier.Notify(topic)
+	go t.context.nsqd.Notify(t)
 
-	return topic
+	return t
 }
 
 // Exiting returns a boolean indicating if this topic is closed/exiting
@@ -57,24 +67,33 @@ func (t *Topic) Exiting() bool {
 // for the given Topic
 func (t *Topic) GetChannel(channelName string) *Channel {
 	t.Lock()
-	defer t.Unlock()
-	return t.getOrCreateChannel(channelName)
+	channel, isNew := t.getOrCreateChannel(channelName)
+	t.Unlock()
+
+	if isNew {
+		// update messagePump state
+		select {
+		case t.channelUpdateChan <- 1:
+		case <-t.exitChan:
+		}
+	}
+
+	return channel
 }
 
 // this expects the caller to handle locking
-func (t *Topic) getOrCreateChannel(channelName string) *Channel {
+func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 	channel, ok := t.channelMap[channelName]
 	if !ok {
 		deleteCallback := func(c *Channel) {
 			t.DeleteExistingChannel(c.name)
 		}
-		channel = NewChannel(t.name, channelName, t.options, t.notifier, deleteCallback)
+		channel = NewChannel(t.name, channelName, t.context, deleteCallback)
 		t.channelMap[channelName] = channel
 		log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
-		// start the topic message pump lazily using a `once` on the first channel creation
-		t.messagePumpStarter.Do(func() { t.waitGroup.Wrap(func() { t.messagePump() }) })
+		return channel, true
 	}
-	return channel
+	return channel, false
 }
 
 func (t *Topic) GetExistingChannel(channelName string) (*Channel, error) {
@@ -104,6 +123,12 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	// delete empties the channel before closing
 	// (so that we dont leave any messages around)
 	channel.Delete()
+
+	// update messagePump state
+	select {
+	case t.channelUpdateChan <- 1:
+	case <-t.exitChan:
+	}
 
 	return nil
 }
@@ -143,54 +168,64 @@ func (t *Topic) messagePump() {
 	var msg *nsq.Message
 	var buf []byte
 	var err error
+	var chans []*Channel
+	var memoryMsgChan chan *nsq.Message
+	var backendChan chan []byte
+
+	t.RLock()
+	for _, c := range t.channelMap {
+		chans = append(chans, c)
+	}
+	t.RUnlock()
+
+	if len(chans) > 0 {
+		memoryMsgChan = t.memoryMsgChan
+		backendChan = t.backend.ReadChan()
+	}
 
 	for {
-		// do an extra check for exit before we select on all the memory/backend/exitChan
-		// this solves the case where we are closed and something else is writing into
-		// backend. we don't want to reverse that
-		if atomic.LoadInt32(&t.exitFlag) == 1 {
-			goto exit
-		}
-
 		select {
-		case msg = <-t.memoryMsgChan:
-		case buf = <-t.backend.ReadChan():
+		case msg = <-memoryMsgChan:
+		case buf = <-backendChan:
 			msg, err = nsq.DecodeMessage(buf)
 			if err != nil {
 				log.Printf("ERROR: failed to decode message - %s", err.Error())
 				continue
 			}
+		case <-t.channelUpdateChan:
+			chans = make([]*Channel, 0)
+			t.RLock()
+			for _, c := range t.channelMap {
+				chans = append(chans, c)
+			}
+			t.RUnlock()
+			if len(chans) == 0 {
+				memoryMsgChan = nil
+				backendChan = nil
+			} else {
+				memoryMsgChan = t.memoryMsgChan
+				backendChan = t.backend.ReadChan()
+			}
+			continue
 		case <-t.exitChan:
 			goto exit
 		}
 
-		t.RLock()
-		// check if all the channels have been deleted
-		if len(t.channelMap) == 0 {
-			// put this message back on the queue
-			// we need to background because we currently hold the lock
-			go func() {
-				t.PutMessage(msg)
-			}()
-
-			// reset the sync.Once
-			t.messagePumpStarter = new(sync.Once)
-
-			t.RUnlock()
-			goto exit
-		}
-
-		for _, channel := range t.channelMap {
+		for i, channel := range chans {
+			chanMsg := msg
 			// copy the message because each channel
-			// needs a unique instance
-			chanMsg := nsq.NewMessage(msg.Id, msg.Body)
-			chanMsg.Timestamp = msg.Timestamp
+			// needs a unique instance but...
+			// fastpath to avoid copy if its the first channel
+			// (the topic already created the first copy)
+			if i > 0 {
+				chanMsg = nsq.NewMessage(msg.Id, msg.Body)
+				chanMsg.Timestamp = msg.Timestamp
+			}
 			err := channel.PutMessage(chanMsg)
 			if err != nil {
 				log.Printf("TOPIC(%s) ERROR: failed to put msg(%s) to channel(%s) - %s", t.name, msg.Id, channel.name, err.Error())
 			}
 		}
-		t.RUnlock()
 	}
 
 exit:
@@ -219,28 +254,31 @@ func (t *Topic) router() {
 
 // Delete empties the topic and all its channels and closes
 func (t *Topic) Delete() error {
-	err := t.exit(true)
-	// since we are explicitly deleting a topic (not just at system exit time)
-	// de-register this from the lookupd
-	go t.notifier.Notify(t)
-	return err
+	return t.exit(true)
 }
 
+// Close persists all outstanding topic data and closes all its channels
 func (t *Topic) Close() error {
 	return t.exit(false)
 }
 
 func (t *Topic) exit(deleted bool) error {
-	if atomic.LoadInt32(&t.exitFlag) == 1 {
+	if !atomic.CompareAndSwapInt32(&t.exitFlag, 0, 1) {
 		return errors.New("exiting")
 	}
 
-	log.Printf("TOPIC(%s): closing", t.name)
+	if deleted {
+		log.Printf("TOPIC(%s): deleting", t.name)
 
-	// initiate exit
-	atomic.StoreInt32(&t.exitFlag, 1)
+		// since we are explicitly deleting a topic (not just at system exit time)
+		// de-register this from the lookupd
+		go t.context.nsqd.Notify(t)
+	} else {
+		log.Printf("TOPIC(%s): closing", t.name)
+	}
 
 	close(t.exitChan)
+
 	t.Lock()
 	close(t.incomingMsgChan)
 	t.Unlock()
@@ -249,29 +287,29 @@ func (t *Topic) exit(deleted bool) error {
 	t.waitGroup.Wait()
 
 	if deleted {
-		// empty the queue (deletes the backend files, too)
-		t.Empty()
-
 		t.Lock()
 		for _, channel := range t.channelMap {
 			delete(t.channelMap, channel.name)
 			channel.Delete()
 		}
 		t.Unlock()
-	} else {
-		// close all the channels
-		for _, channel := range t.channelMap {
-			err := channel.Close()
-			if err != nil {
-				// we need to continue regardless of error to close all the channels
-				log.Printf("ERROR: channel(%s) close - %s", channel.name, err.Error())
-			}
-		}
 
-		// write anything leftover to disk
-		t.flush()
+		// empty the queue (deletes the backend files, too)
+		t.Empty()
+		return t.backend.Delete()
 	}
 
+	// close all the channels
+	for _, channel := range t.channelMap {
+		err := channel.Close()
+		if err != nil {
+			// we need to continue regardless of error to close all the channels
+			log.Printf("ERROR: channel(%s) close - %s", channel.name, err.Error())
+		}
+	}
+
+	// write anything leftover to disk
+	t.flush()
 	return t.backend.Close()
 }
 
@@ -309,4 +347,20 @@ func (t *Topic) flush() error {
 
 finish:
 	return nil
+}
+
+func (t *Topic) AggregateChannelE2eProcessingLatency() *util.Quantile {
+	var latencyStream *util.Quantile
+	for _, c := range t.channelMap {
+		if c.e2eProcessingLatencyStream == nil {
+			continue
+		}
+		if latencyStream == nil {
+			latencyStream = util.NewQuantile(
+				t.context.nsqd.options.e2eProcessingLatencyWindowTime,
+				t.context.nsqd.options.e2eProcessingLatencyPercentiles)
+		}
+		latencyStream.Merge(c.e2eProcessingLatencyStream)
+	}
+	return latencyStream
 }

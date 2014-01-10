@@ -10,9 +10,9 @@ package main
 // behavior when sequences rollover for our specific implementation needs
 
 import (
-	"../nsq"
 	"encoding/hex"
 	"errors"
+	"github.com/sunminghong/go-nsq"
 	"time"
 )
 

@@ -1,10 +1,9 @@
 package main
 
 import (
-	"../nsq"
-	"../util"
 	"flag"
 	"fmt"
+	"github.com/bitly/nsq/util"
 	"log"
 	"net"
 	"os"
@@ -22,9 +21,6 @@ var (
 	broadcastAddress        = flag.String("broadcast-address", "", "address of this lookupd node, (default to the OS hostname)")
 )
 
-var protocols = map[string]nsq.Protocol{}
-var lookupd *NSQLookupd
-
 func main() {
 	flag.Parse()
 
@@ -37,7 +33,7 @@ func main() {
 	}
 
 	if *showVersion {
-		fmt.Printf("nsqlookupd v%s\n", util.BINARY_VERSION)
+		fmt.Println(util.Version("nsqlookupd"))
 		return
 	}
 
@@ -59,15 +55,15 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Printf("nsqlookupd v%s", util.BINARY_VERSION)
+	log.Println(util.Version("nsqlookupd"))
 
-	lookupd = NewNSQLookupd()
-	lookupd.tcpAddr = tcpAddr
-	lookupd.httpAddr = httpAddr
-	lookupd.broadcastAddress = *broadcastAddress
-	lookupd.inactiveProducerTimeout = *inactiveProducerTimeout
-	lookupd.tombstoneLifetime = *tombstoneLifetime
-	lookupd.Main()
+	nsqlookupd := NewNSQLookupd()
+	nsqlookupd.tcpAddr = tcpAddr
+	nsqlookupd.httpAddr = httpAddr
+	nsqlookupd.broadcastAddress = *broadcastAddress
+	nsqlookupd.inactiveProducerTimeout = *inactiveProducerTimeout
+	nsqlookupd.tombstoneLifetime = *tombstoneLifetime
+	nsqlookupd.Main()
 	<-exitChan
-	lookupd.Exit()
+	nsqlookupd.Exit()
 }

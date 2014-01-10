@@ -1,19 +1,18 @@
 package main
 
 import (
-	"../nsq"
-	"../util"
+	"github.com/sunminghong/go-nsq"
+	"github.com/bitly/nsq/util"
 	"io"
 	"log"
 	"net"
 )
 
-type TcpProtocol struct {
-	util.TcpHandler
-	protocols map[string]nsq.Protocol
+type tcpServer struct {
+	context *Context
 }
 
-func (p *TcpProtocol) Handle(clientConn net.Conn) {
+func (p *tcpServer) Handle(clientConn net.Conn) {
 	log.Printf("TCP: new client(%s)", clientConn.RemoteAddr())
 
 	// The client should initialize itself by sending a 4 byte sequence indicating
@@ -29,9 +28,12 @@ func (p *TcpProtocol) Handle(clientConn net.Conn) {
 
 	log.Printf("CLIENT(%s): desired protocol magic '%s'", clientConn.RemoteAddr(), protocolMagic)
 
-	prot, ok := p.protocols[protocolMagic]
-	if !ok {
-		nsq.SendFramedResponse(clientConn, nsq.FrameTypeError, []byte("E_BAD_PROTOCOL"))
+	var prot util.Protocol
+	switch protocolMagic {
+	case "  V2":
+		prot = &ProtocolV2{context: p.context}
+	default:
+		util.SendFramedResponse(clientConn, nsq.FrameTypeError, []byte("E_BAD_PROTOCOL"))
 		clientConn.Close()
 		log.Printf("ERROR: client(%s) bad protocol magic '%s'", clientConn.RemoteAddr(), protocolMagic)
 		return
